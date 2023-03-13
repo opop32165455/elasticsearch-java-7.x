@@ -88,36 +88,6 @@ public class EsAggUtils {
         );
     }
 
-    /**
-     * term 嵌套三层
-     *
-     * @param field1
-     * @param topN1
-     * @param field2
-     * @param topN2
-     * @param field3
-     * @param topN3
-     * @return
-     */
-    public static Aggregation terms3Agg(String field1, Integer topN1, String field2, Integer topN2, String field3, Integer topN3) {
-        return Aggregation.of(
-                agg -> agg.terms(
-                        ts -> ts.field(field1)
-                                .size(topN1)
-                ).aggregations(field2, Aggregation.of(
-                                agg1 -> agg1.terms(
-                                        ts1 -> ts1.field(field2).size(topN2)
-                                ).aggregations(field3, Aggregation.of(
-                                                agg2 -> agg2.terms(
-                                                        ts2 -> ts2.field(field3).size(topN3)
-                                                )
-
-                                        )
-                                )
-                        )
-                )
-        );
-    }
 
     /**
      * 简单的terms agg
@@ -152,7 +122,7 @@ public class EsAggUtils {
 
             //result
             for (var termsBucket : termsBuckets) {
-                aggMap.put(termsBucket.key(), termsBucket.docCount());
+                aggMap.put(termsBucket.key().stringValue(), termsBucket.docCount());
             }
 
             return aggMap;
@@ -212,10 +182,10 @@ public class EsAggUtils {
                                     .map(Buckets::array)
                                     .ifPresent(terms2Buckets -> {
                                         for (StringTermsBucket bucket2 : terms2Buckets) {
-                                            subMap.put(bucket2.key(), bucket2.docCount());
+                                            subMap.put(bucket2.key().stringValue(), bucket2.docCount());
                                         }
                                     });
-                            aggMap.put(termsBucket.key(), subMap);
+                            aggMap.put(termsBucket.key().stringValue(), subMap);
                         }
                     });
             return aggMap;
@@ -225,66 +195,6 @@ public class EsAggUtils {
         return null;
     }
 
-    public static HashMap<String, HashMap<String, HashMap<String, Long>>> terms3Agg(ElasticsearchClient client, Query query, String termsField1, Integer topN1, String termsField2, Integer topN2, String termsField3, Integer topN3, String... indexes) {
-        try {
-            HashMap<String, HashMap<String, HashMap<String, Long>>> res = new LinkedHashMap<>((int) (topN1 / 0.75) + 1);
-
-            //term term agg
-            Aggregation aggregation = terms3Agg(termsField1, topN1, termsField2, topN2, termsField3, topN3);
-
-            SearchRequest searchRequest = new SearchRequest.Builder()
-                    .index(Arrays.asList(indexes))
-                    .query(query)
-                    .aggregations(termsField1, aggregation)
-                    .build();
-
-            //search
-            SearchResponse<Object> response = client.search(searchRequest, Object.class);
-
-            //第一层terms
-            Optional.ofNullable(response.aggregations())
-                    .map(aggregations -> aggregations.get(termsField1))
-                    .map(Aggregate::sterms)
-                    .map(StringTermsAggregate::buckets)
-                    .map(Buckets::array)
-                    .ifPresent(termsBuckets -> {
-                        //result
-                        for (var bucket : termsBuckets) {
-                            HashMap<String, HashMap<String, Long>> bucket2Map = new LinkedHashMap<>((int) (topN2 / 0.75) + 1);
-
-                            //第二次terms
-                            Optional.ofNullable(bucket.aggregations())
-                                    .map(aggregations -> aggregations.get(termsField2))
-                                    .map(Aggregate::sterms)
-                                    .map(StringTermsAggregate::buckets)
-                                    .map(Buckets::array)
-                                    .ifPresent(terms2Buckets -> {
-                                        for (StringTermsBucket bucket2 : terms2Buckets) {
-                                            HashMap<String, Long> bucket3Map = new LinkedHashMap<>((int) (topN3 / 0.75) + 1);
-                                            //第三层terms
-                                            Optional.ofNullable(bucket2.aggregations())
-                                                    .map(aggregations -> aggregations.get(termsField3))
-                                                    .map(Aggregate::sterms)
-                                                    .map(StringTermsAggregate::buckets)
-                                                    .map(Buckets::array)
-                                                    .ifPresent(terms3Bucket -> {
-                                                        for (StringTermsBucket bucket3 : terms3Bucket) {
-                                                            bucket3Map.put(bucket3.key(), bucket3.docCount());
-                                                        }
-                                                    });
-                                            bucket2Map.put(bucket2.key(), bucket3Map);
-                                        }
-                                    });
-                            res.put(bucket.key(), bucket2Map);
-                        }
-
-                    });
-            return res;
-        } catch (IOException e) {
-            log.error(e.getMessage(), e);
-        }
-        return null;
-    }
 
     public static LinkedHashMap<String, Object> wrapNAgg(Map<String, Aggregate> aggregateMap) {
         LinkedHashMap<String, Object> resultMap = new LinkedHashMap<>();
@@ -295,9 +205,9 @@ public class EsAggUtils {
             if (aggregate.isSterms()) {
                 for (StringTermsBucket bucket : aggregate.sterms().buckets().array()) {
                     if (CollUtil.isEmpty(bucket.aggregations())) {
-                        singleResults.put(bucket.key(), bucket.docCount());
+                        singleResults.put(bucket.key().stringValue(), bucket.docCount());
                     } else {
-                        singleResults.put(bucket.key(), wrapNAgg(bucket.aggregations()));
+                        singleResults.put(bucket.key().stringValue(), wrapNAgg(bucket.aggregations()));
                     }
                 }
             } else if (aggregate.isLterms()) {
@@ -362,7 +272,7 @@ public class EsAggUtils {
                                     .map(aggregations -> aggregations.get(aggSumField))
                                     .map(Aggregate::sum)
                                     .map(SingleMetricAggregateBase::value)
-                                    .ifPresent(value -> aggMap.put(termsBucket.key(), value));
+                                    .ifPresent(value -> aggMap.put(termsBucket.key().stringValue(), value));
 
                         }
                     });

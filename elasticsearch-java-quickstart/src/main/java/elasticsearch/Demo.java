@@ -5,10 +5,12 @@ import co.elastic.clients.elasticsearch._types.query_dsl.Query;
 import co.elastic.clients.elasticsearch.core.SearchRequest;
 import co.elastic.clients.elasticsearch.core.SearchResponse;
 import co.elastic.clients.elasticsearch.core.search.Hit;
+import elasticsearch.annotation.ESField;
 import elasticsearch.util.EsAggUtils;
 import elasticsearch.util.EsClientUtils;
 import elasticsearch.util.EsSearchUtil;
 import elasticsearch.util.EsWriteUtils;
+import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -21,6 +23,7 @@ import java.util.stream.Collectors;
  *
  * @author zxc
  */
+@Slf4j
 public class Demo {
     public static void main(String[] args) throws IOException {
         //client es1:9200
@@ -31,6 +34,7 @@ public class Demo {
 
         //write
         EsWriteUtils.write(client, indexName, new EsWriteUtils.EsDoc() {
+            @ESField
             String name = "a";
 
             @Override
@@ -57,22 +61,24 @@ public class Demo {
                 Object.class);
 
         //解析response
-        List<Object> objects = response.hits().hits().stream()
+        List<String> objects = response.hits().hits().stream()
                 .map(Hit::source)
                 //todo 自己解析json
+                .map(String::valueOf)
                 .collect(Collectors.toList());
 
+        System.out.println("query data = " + objects);
 
         //scroll
         EsSearchUtil.scrollHandle(client, query, indexName, new Consumer<List<Object>>() {
             @Override
             public void accept(List<Object> objects) {
-                System.out.println("objects = " + objects);
+                System.out.println("scroll data = " + objects);
             }
         });
 
         //agg
-        HashMap<String, Long> aggResult = EsAggUtils.termsAgg(client, query, nameField, 10, indexName);
+        HashMap<String, Long> aggResult = EsAggUtils.termsAgg(client, query, nameField + ".keyword", 10, indexName);
         System.out.println("aggResult = " + aggResult);
     }
 }
